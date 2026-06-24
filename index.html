@@ -1,27 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MCP Server Test</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; }
-        button { padding: 10px; margin: 5px; cursor: pointer; }
-        pre { background: #f4f4f4; padding: 10px; overflow-x: auto; max-height: 400px; }
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+
+        button {
+            padding: 10px;
+            margin: 5px;
+            cursor: pointer;
+        }
+
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            overflow-x: auto;
+            max-height: 400px;
+        }
     </style>
 </head>
+
 <body>
     <h1>WP MCP Service Tester</h1>
     <div>
         <button onclick="connect()">1. Connect SSE</button>
         <button onclick="testTool()">2. Call Get_PostList</button>
     </div>
-    
+
     <h3>Log Output:</h3>
     <pre id="log">Waiting...</pre>
 
     <script>
-        let messageEndpoint = 'http://localhost:3000/messages';
+        let messageEndpoint = 'https://wpa.motioncentury.com/messages';
 
         function log(msg) {
             const el = document.getElementById('log');
@@ -31,8 +47,8 @@
 
         function connect() {
             log('Connecting to SSE...');
-            const sse = new EventSource('http://localhost:3000/sse');
-            
+            const sse = new EventSource('https://wpa.motioncentury.com/sse');
+
             // Lắng nghe các JSON-RPC response từ Server
             sse.onmessage = (e) => {
                 log('🟢 SERVER RESPONSE:\n' + JSON.stringify(JSON.parse(e.data), null, 2));
@@ -44,7 +60,7 @@
                 if (e.data.startsWith('http')) {
                     messageEndpoint = e.data;
                 } else {
-                    messageEndpoint = 'http://localhost:3000' + e.data;
+                    messageEndpoint = 'https://wpa.motioncentury.com' + e.data;
                 }
             });
 
@@ -62,16 +78,16 @@
                     arguments: { page: 1, per_page: 3 }
                 }
             };
-            
+
             log('📤 SENDING REQUEST:\n' + JSON.stringify(request, null, 2));
-            
+
             try {
                 const res = await fetch(messageEndpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(request)
                 });
-                
+
                 if (!res.ok) {
                     log('❌ HTTP Error: ' + res.status);
                 }
@@ -81,4 +97,5 @@
         }
     </script>
 </body>
+
 </html>
