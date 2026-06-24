@@ -31,13 +31,14 @@
     <div>
         <button onclick="connect()">1. Connect SSE</button>
         <button onclick="testTool()">2. Call Get_PostList</button>
+        <button onclick="testEditPost()">3. Call Edit_SinglePost (ID 3722)</button>
     </div>
 
     <h3>Log Output:</h3>
     <pre id="log">Waiting...</pre>
 
     <script>
-        let messageEndpoint = 'https://wpa.motioncentury.com/messages';
+        let messageEndpoint = 'http://localhost:3000/messages';
 
         function log(msg) {
             const el = document.getElementById('log');
@@ -47,7 +48,7 @@
 
         function connect() {
             log('Connecting to SSE...');
-            const sse = new EventSource('https://wpa.motioncentury.com/sse');
+            const sse = new EventSource('http://localhost:3000/sse');
 
             // Lắng nghe các JSON-RPC response từ Server
             sse.onmessage = (e) => {
@@ -60,7 +61,7 @@
                 if (e.data.startsWith('http')) {
                     messageEndpoint = e.data;
                 } else {
-                    messageEndpoint = 'https://wpa.motioncentury.com' + e.data;
+                    messageEndpoint = 'http://localhost:3000' + e.data;
                 }
             });
 
@@ -76,6 +77,38 @@
                 params: {
                     name: "Get_PostList",
                     arguments: { page: 1, per_page: 3 }
+                }
+            };
+
+            log('📤 SENDING REQUEST:\n' + JSON.stringify(request, null, 2));
+
+            try {
+                const res = await fetch(messageEndpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(request)
+                });
+
+                if (!res.ok) {
+                    log('❌ HTTP Error: ' + res.status);
+                }
+            } catch (e) {
+                log('❌ Fetch Error: ' + e.message);
+            }
+        }
+
+        async function testEditPost() {
+            const request = {
+                jsonrpc: "2.0",
+                id: Date.now(),
+                method: "tools/call",
+                params: {
+                    name: "Edit_SinglePost",
+                    arguments: { 
+                        id: 3722,
+                        title: "Test Edit Title via MCP",
+                        content: "This is a test content from MCP Server Edit Tool."
+                    }
                 }
             };
 
