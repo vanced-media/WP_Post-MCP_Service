@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { createMcpServer } from "./src/tools/index.js";
 
@@ -9,6 +11,17 @@ dotenv.config();
 const app = express();
 app.use(cors());
 
+// Load sites configuration
+const sitesConfigPath = path.resolve('./sites.json');
+let sitesConfig = {};
+try {
+    if (fs.existsSync(sitesConfigPath)) {
+        sitesConfig = JSON.parse(fs.readFileSync(sitesConfigPath, 'utf8'));
+    }
+} catch (e) {
+    console.error("Failed to load sites.json:", e);
+}
+
 // ---------------------------------------------------------
 // Express Routes for SSE Transport
 // ---------------------------------------------------------
@@ -16,8 +29,25 @@ const transports = new Map();
 
 app.get('/sse', async (req, res) => {
     try {
+        const apiKey = req.query.apiKey;
+        if (!apiKey) {
+            return res.status(401).send("Unauthorized: Missing apiKey parameter.");
+        }
+
+        const siteConfig = sitesConfig[apiKey];
+        if (!siteConfig) {
+            return res.status(401).send("Unauthorized: Invalid apiKey.");
+        }
+        
+        // Calculate auth header
+        const authHeader = 'Basic ' + Buffer.from(`${siteConfig.user}:${siteConfig.pass}`).toString('base64');
+        const finalSiteConfig = {
+            url: siteConfig.url,
+            authHeader: authHeader
+        };
+
         const transport = new SSEServerTransport('/messages', res);
-        const server = createMcpServer();
+        const server = createMcpServer(finalSiteConfig);
         await server.connect(transport);
         
         const sessionId = transport.sessionId;

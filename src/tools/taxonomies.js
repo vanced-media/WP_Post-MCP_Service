@@ -1,6 +1,4 @@
-import { wpFetch } from "../utils/wpFetch.js";
-
-export function registerTaxonomiesTools(server) {
+export function registerTaxonomiesTools(server, wpFetch) {
     // ---------------------------------------------------------
     // Tool: get_Taxonomies
     // ---------------------------------------------------------

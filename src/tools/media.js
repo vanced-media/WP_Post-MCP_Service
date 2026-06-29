@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { wpFetch } from "../utils/wpFetch.js";
 
-export function registerMediaTools(server) {
+export function registerMediaTools(server, wpFetch) {
     // ---------------------------------------------------------
     // Tool: Search_Media
     // ---------------------------------------------------------

@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { wpFetch } from "../utils/wpFetch.js";
 
-export function registerPostsTools(server) {
+export function registerPostsTools(server, wpFetch) {
     // ---------------------------------------------------------
     // Tool: Get_PostList
     // ---------------------------------------------------------
