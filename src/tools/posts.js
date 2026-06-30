@@ -6,18 +6,19 @@ export function registerPostsTools(server, wpFetch) {
     // ---------------------------------------------------------
     server.tool(
         "Get_PostList",
-        "Get a list of posts from WordPress, including a flag indicating if they were edited by this plugin.",
+        "Get a list of posts or pages from WordPress, including a flag indicating if they were edited by this plugin.",
         {
             page: z.number().optional().describe("Page number (default 1)"),
             per_page: z.number().optional().describe("Items per page (default 10)"),
             filter: z.object({
                 categories: z.array(z.number()).optional().describe("Array of category IDs to filter by"),
                 author: z.array(z.number()).optional().describe("Array of author IDs to filter by")
-            }).optional().describe("Filter options")
+            }).optional().describe("Filter options"),
+            post_type: z.enum(['post', 'page']).optional().describe("Type of content to fetch (default 'post')")
         },
-        async ({ page = 1, per_page = 10, filter = {} }) => {
+        async ({ page = 1, per_page = 10, filter = {}, post_type = 'post' }) => {
             try {
-                let url = `/wp-json/wp/v2/posts?page=${page}&per_page=${per_page}&_fields=id,title,content`;
+                let url = `/wp-json/wp/v2/${post_type === 'page' ? 'pages' : 'posts'}?page=${page}&per_page=${per_page}&_fields=id,title,content`;
                 if (filter.categories && filter.categories.length > 0) {
                     url += `&categories=${filter.categories.join(',')}`;
                 }
@@ -54,7 +55,7 @@ export function registerPostsTools(server, wpFetch) {
     // ---------------------------------------------------------
     server.tool(
         "Get_SinglePost",
-        "Get all detailed information about a single post via the Assist Agent API.",
+        "Get all detailed information about a single post or page via the Assist Agent API.",
         {
             id: z.number().describe("Post ID")
         },
@@ -78,7 +79,7 @@ export function registerPostsTools(server, wpFetch) {
     // ---------------------------------------------------------
     server.tool(
         "Create_SinglePost",
-        "Create a new post in WordPress with optional RankMath SEO metadata.",
+        "Create a new post or page in WordPress with optional RankMath SEO metadata.",
         {
             title: z.string().describe("Post title"),
             content: z.string().optional().describe("Post HTML content"),
@@ -87,7 +88,8 @@ export function registerPostsTools(server, wpFetch) {
             status: z.string().optional().describe("Post status (draft, publish, pending, private)"),
             category_ids: z.array(z.number()).optional().describe("Array of Category IDs"),
             tags: z.array(z.string()).optional().describe("Array of tag names"),
-            rankmath: z.record(z.string()).optional().describe("RankMath SEO fields (e.g., rank_math_title, rank_math_description, rank_math_focus_keyword)")
+            rankmath: z.record(z.string()).optional().describe("RankMath SEO fields (e.g., rank_math_title, rank_math_description, rank_math_focus_keyword)"),
+            post_type: z.enum(['post', 'page']).optional().describe("Type of content to create (default 'post')")
         },
         async (args) => {
             try {
@@ -121,7 +123,7 @@ export function registerPostsTools(server, wpFetch) {
     // ---------------------------------------------------------
     server.tool(
         "Edit_SinglePost",
-        "Edit a post. Only updates provided fields. Automatically records the edit history via an HTML comment.",
+        "Edit a post or page. Only updates provided fields. Automatically records the edit history via an HTML comment.",
         {
             id: z.number().describe("Post ID"),
             title: z.string().optional().describe("New title (optional)"),
