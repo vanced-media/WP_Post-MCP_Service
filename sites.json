@@ -3,5 +3,14 @@
     "url": "https://temp.motioncentury.com/",
     "user": "main",
     "pass": "y1Mv Irtc 8Fx4 rnkL 1Kdd NTTx"
+<<<<<<< Updated upstream
+=======
+  },
+
+  "mcps_facade_test_txx": {
+    "url": "https://tester.vanced.site//",
+    "user": "Facade",
+    "pass": "ZPe2 aR3M VXDM eZ4p G9SZ BwVi"
+>>>>>>> Stashed changes
   }
 }
