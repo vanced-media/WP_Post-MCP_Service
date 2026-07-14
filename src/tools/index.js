@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerPostsTools } from "./posts.js";
 import { registerMediaTools } from "./media.js";
 import { registerTaxonomiesTools } from "./taxonomies.js";
+import { registerFacebookTools } from "./facebook.js";
 import { createWpFetch } from "../utils/wpFetch.js";
 
 export function createMcpServer(siteConfig) {
@@ -15,6 +16,7 @@ export function createMcpServer(siteConfig) {
     registerPostsTools(server, wpFetch);
     registerMediaTools(server, wpFetch);
     registerTaxonomiesTools(server, wpFetch);
+    registerFacebookTools(server, wpFetch);
 
     return server;
 }
