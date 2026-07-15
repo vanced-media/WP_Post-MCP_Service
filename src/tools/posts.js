@@ -168,4 +168,46 @@ export function registerPostsTools(server, wpFetch) {
             }
         }
     );
+
+    // ---------------------------------------------------------
+    // Tool: Search_Posts
+    // ---------------------------------------------------------
+    server.tool(
+        "Search_Posts",
+        "Global search across posts, pages, and products with separated category filtering.",
+        {
+            keyword: z.string().describe("Search keyword"),
+            types: z.array(z.enum(['post', 'page', 'product'])).optional().describe("Array of content types to search (e.g. ['post', 'product'])"),
+            post_category_ids: z.array(z.number()).optional().describe("Array of category IDs for Posts"),
+            product_category_ids: z.array(z.number()).optional().describe("Array of category IDs for WooCommerce Products"),
+            author_ids: z.array(z.number()).optional().describe("Array of author IDs"),
+            page: z.number().optional().describe("Page number (default 1)")
+        },
+        async (args) => {
+            try {
+                const payload = {
+                    keyword: args.keyword,
+                    types: args.types,
+                    post_category_ids: args.post_category_ids,
+                    product_category_ids: args.product_category_ids,
+                    author_ids: args.author_ids,
+                    page: args.page
+                };
+
+                const result = await wpFetch(`/wp-json/assist-agent/v1/posts/search`, {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+
+                return {
+                    content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+                };
+            } catch (error) {
+                return {
+                    isError: true,
+                    content: [{ type: "text", text: `Error searching posts: ${error.message}` }]
+                };
+            }
+        }
+    );
 }
