@@ -39,9 +39,11 @@ export function registerMediaTools(server, wpFetch) {
     // ---------------------------------------------------------
     server.tool(
         "Upload_Media",
-        "Upload an image to the WordPress Media Library via URL. Does NOT accept base64. The server will download the image and convert it to WebP.",
+        "Upload an image to the WordPress Media Library. You can provide an absolute URL OR a base64 string. The server will compress images > 1.3MB to WebP.",
         {
-            file_url: z.string().describe("Absolute URL of the image to download and upload"),
+            file_url: z.string().optional().describe("Absolute URL of the image to download"),
+            file_base64: z.string().max(4194304).optional().describe("Base64 string of the image (max 3MB / ~4M chars). Use this for IDE/direct uploads."),
+            upload_purpose: z.enum(['normal_upload', 'facebook_upload']).optional().describe("Specify facebook_upload if the image is strictly for posting to Facebook, allowing admins to easily clean it up later."),
             file_name: z.string().optional().describe("Desired filename (without extension)"),
             alt_text: z.string().optional().describe("Image alt text for SEO"),
             title: z.string().optional().describe("Image title"),
