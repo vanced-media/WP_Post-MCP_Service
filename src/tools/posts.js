@@ -129,9 +129,10 @@ export function registerPostsTools(server, wpFetch) {
             title: z.string().optional().describe("New title (optional)"),
             content: z.string().optional().describe("New content (optional)"),
             status: z.string().optional().describe("New status (optional)"),
+            featured_image: z.string().optional().describe("New absolute URL for the featured image (optional)"),
             rankmath: z.record(z.string()).optional().describe("RankMath SEO fields (e.g., rank_math_title, rank_math_description, rank_math_focus_keyword)")
         },
-        async ({ id, title, content, status, rankmath }) => {
+        async ({ id, title, content, status, featured_image, rankmath }) => {
             try {
                 let finalContent = content;
                 
@@ -149,6 +150,7 @@ export function registerPostsTools(server, wpFetch) {
                 const payload = {};
                 if (title !== undefined) payload.title = title;
                 if (status !== undefined) payload.status = status;
+                if (featured_image !== undefined) payload.featured_image = featured_image;
                 if (rankmath !== undefined) payload.rankmath = rankmath;
                 payload.content = finalContent;
 
