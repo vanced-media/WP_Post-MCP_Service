@@ -89,6 +89,8 @@ export function registerPostsTools(server, wpFetch) {
             category_ids: z.array(z.number()).optional().describe("Array of Category IDs"),
             tags: z.array(z.string()).optional().describe("Array of tag names"),
             rankmath: z.record(z.string()).optional().describe("RankMath SEO fields (e.g., rank_math_title, rank_math_description, rank_math_focus_keyword)"),
+            scheduled_publish_time: z.string().optional().describe("ISO 8601 string containing timezone (e.g., '2026-07-25T15:30:00+07:00'). Use this to schedule the post to be published at a future time. If provided, the status will automatically be set to 'future'."),
+            blocks: z.array(z.any()).optional().describe("Array of block objects (Gutenberg)"),
             post_type: z.enum(['post', 'page']).optional().describe("Type of content to create (default 'post')")
         },
         async (args) => {
@@ -97,8 +99,17 @@ export function registerPostsTools(server, wpFetch) {
                 finalContent += `\n<!-- mcp_edited: ${Date.now()} -->`;
 
                 const payload = {
-                    ...args,
-                    content: finalContent
+                    title: args.title,
+                    content: finalContent,
+                    chapeau: args.chapeau,
+                    status: args.status,
+                    featured_image: args.featured_image,
+                    post_type: args.post_type,
+                    category_ids: args.category_ids,
+                    tags: args.tags,
+                    rankmath: args.rankmath,
+                    blocks: args.blocks,
+                    scheduled_publish_time: args.scheduled_publish_time
                 };
 
                 const result = await wpFetch(`/wp-json/assist-agent/v1/posts/create`, {
