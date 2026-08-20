@@ -61,10 +61,10 @@ export function registerMediaTools(server, wpFetch) {
           "Base64 string of the image (max 3MB / ~4M chars). Use this for IDE/direct uploads.",
         ),
       upload_purpose: z
-        .enum(["normal_upload", "facebook_upload"])
+        .enum(["normal_upload", "social_upload"])
         .optional()
         .describe(
-          "Specify facebook_upload if the image is strictly for posting to Facebook, allowing admins to easily clean it up later.",
+          "Specify social_upload if the image is strictly for posting to Social Media (Facebook, Instagram, Threads), allowing admins to easily clean it up later.",
         ),
       file_name: z
         .string()

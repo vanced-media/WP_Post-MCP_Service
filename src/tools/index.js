@@ -3,6 +3,8 @@ import { registerPostsTools } from "./posts.js";
 import { registerMediaTools } from "./media.js";
 import { registerTaxonomiesTools } from "./taxonomies.js";
 import { registerFacebookTools } from "./facebook.js";
+import { registerInstagramTools } from "./instagram.js";
+import { registerThreadsTools } from "./threads.js";
 import { createWpFetch } from "../utils/wpFetch.js";
 
 export function createMcpServer(siteConfig) {
@@ -17,6 +19,8 @@ export function createMcpServer(siteConfig) {
     registerMediaTools(server, wpFetch);
     registerTaxonomiesTools(server, wpFetch);
     registerFacebookTools(server, wpFetch);
+    registerInstagramTools(server, wpFetch);
+    registerThreadsTools(server, wpFetch);
 
     return server;
 }
