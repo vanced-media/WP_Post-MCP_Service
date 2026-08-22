@@ -47,7 +47,7 @@ app.get('/sse', async (req, res) => {
         };
 
         const transport = new SSEServerTransport('/messages', res);
-        const server = createMcpServer(finalSiteConfig);
+        const server = await createMcpServer(finalSiteConfig);
         await server.connect(transport);
         
         const sessionId = transport.sessionId;
