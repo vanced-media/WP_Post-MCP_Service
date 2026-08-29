@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpServer } from "./src/tools/index.js";
 
 dotenv.config();
@@ -26,6 +27,7 @@ try {
 // Express Routes for SSE Transport
 // ---------------------------------------------------------
 const transports = new Map();
+const streamableTransports = new Map();
 
 app.get('/sse', async (req, res) => {
     try {
@@ -81,8 +83,51 @@ app.post('/messages', async (req, res) => {
     }
 });
 
+// ---------------------------------------------------------
+// Express Routes for Streamable HTTP Transport
+// ---------------------------------------------------------
+app.all('/stream', async (req, res) => {
+    try {
+        const apiKey = req.query.apiKey;
+        if (!apiKey) {
+            return res.status(401).send("Unauthorized: Missing apiKey parameter.");
+        }
+
+        const siteConfig = sitesConfig[apiKey];
+        if (!siteConfig) {
+            return res.status(401).send("Unauthorized: Invalid apiKey.");
+        }
+        
+        let transport = streamableTransports.get(apiKey);
+        if (!transport) {
+            transport = new StreamableHTTPServerTransport();
+            
+            const authHeader = 'Basic ' + Buffer.from(`${siteConfig.user}:${siteConfig.pass}`).toString('base64');
+            const finalSiteConfig = {
+                url: siteConfig.url,
+                authHeader: authHeader
+            };
+            
+            const server = await createMcpServer(finalSiteConfig);
+            await server.connect(transport);
+            
+            streamableTransports.set(apiKey, transport);
+            
+            transport.onclose = () => {
+                streamableTransports.delete(apiKey);
+            };
+        }
+
+        await transport.handleRequest(req, res);
+    } catch (err) {
+        console.error("Streamable HTTP error:", err);
+        if (!res.headersSent) res.status(500).send("Streamable HTTP Error");
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`WP-MCP Service is running on http://localhost:${PORT}`);
     console.log(`SSE connection endpoint: http://localhost:${PORT}/sse`);
+    console.log(`Streamable HTTP connection endpoint: http://localhost:${PORT}/stream`);
 });
