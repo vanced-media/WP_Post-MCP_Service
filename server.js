@@ -31,9 +31,16 @@ const streamableTransports = new Map();
 
 app.get('/sse', async (req, res) => {
     try {
-        const apiKey = req.query.apiKey;
+        let apiKey = req.query.apiKey;
+        if (!apiKey && req.headers.authorization) {
+            const authHeader = req.headers.authorization;
+            if (authHeader.startsWith('Bearer ')) {
+                apiKey = authHeader.substring(7).trim();
+            }
+        }
+
         if (!apiKey) {
-            return res.status(401).send("Unauthorized: Missing apiKey parameter.");
+            return res.status(401).send("Unauthorized: Missing apiKey parameter or Bearer token.");
         }
 
         const siteConfig = sitesConfig[apiKey];
@@ -88,9 +95,16 @@ app.post('/messages', async (req, res) => {
 // ---------------------------------------------------------
 app.all('/stream', async (req, res) => {
     try {
-        const apiKey = req.query.apiKey;
+        let apiKey = req.query.apiKey;
+        if (!apiKey && req.headers.authorization) {
+            const authHeader = req.headers.authorization;
+            if (authHeader.startsWith('Bearer ')) {
+                apiKey = authHeader.substring(7).trim();
+            }
+        }
+
         if (!apiKey) {
-            return res.status(401).send("Unauthorized: Missing apiKey parameter.");
+            return res.status(401).send("Unauthorized: Missing apiKey parameter or Bearer token.");
         }
 
         const siteConfig = sitesConfig[apiKey];
