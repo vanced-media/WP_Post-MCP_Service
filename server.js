@@ -134,8 +134,8 @@ app.all('/stream', async (req, res) => {
 
         await transport.handleRequest(req, res);
     } catch (err) {
-        console.error("Streamable HTTP error:", err);
-        if (!res.headersSent) res.status(500).send("Streamable HTTP Error");
+        console.log("Streamable HTTP error:", err.stack || err);
+        if (!res.headersSent) res.status(500).send(String(err.stack || err));
     }
 });
 
