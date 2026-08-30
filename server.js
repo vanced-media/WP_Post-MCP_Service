@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpServer } from "./src/tools/index.js";
@@ -114,7 +115,9 @@ app.all('/stream', async (req, res) => {
         
         let transport = streamableTransports.get(apiKey);
         if (!transport) {
-            transport = new StreamableHTTPServerTransport();
+            transport = new StreamableHTTPServerTransport({
+                sessionIdGenerator: () => randomUUID()
+            });
             
             const authHeader = 'Basic ' + Buffer.from(`${siteConfig.user}:${siteConfig.pass}`).toString('base64');
             const finalSiteConfig = {
