@@ -47,7 +47,7 @@ export function registerMediaTools(server, wpFetch) {
   // ---------------------------------------------------------
   server.tool(
     "Upload_Media",
-    "Upload an image to the WordPress Media Library. You can provide an absolute URL OR a base64 string. The server will compress images > 1.3MB to WebP. NOTE: Only upload 1 file at a time. Wait for the file finish upload before upload another.",
+    "Upload an image to the WordPress Media Library. You can provide an absolute URL OR a base64 string. For product images, use normal_upload and pass the returned attachment_id to Create_Woo_Product or Update_Woo_Product as image_id or gallery_image_ids. The server will compress images > 1.3MB to WebP. NOTE: Only upload 1 file at a time. Wait for the file finish upload before upload another.",
     {
       file_url: z
         .string()
@@ -64,7 +64,7 @@ export function registerMediaTools(server, wpFetch) {
         .enum(["normal_upload", "social_upload"])
         .optional()
         .describe(
-          "Specify social_upload if the image is strictly for posting to Social Media (Facebook, Instagram, Threads), allowing admins to easily clean it up later.",
+          "Use normal_upload for product images. Specify social_upload only for temporary Social Media images (Facebook, Instagram, Threads) that admins may delete during cleanup; these cannot be assigned to products.",
         ),
       file_name: z
         .string()

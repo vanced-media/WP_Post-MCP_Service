@@ -4,6 +4,11 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
     const canVar = !!permissions.product_variation_manage;
     const canSeo = !!permissions.product_use_rankmath;
 
+    const imageFields = {
+        image_id: z.number().int().nonnegative().optional().describe("Main product image attachment ID on this website. Omit to keep unchanged; 0 removes the image. Find IDs with Search_Media or Upload_Media (normal_upload)."),
+        gallery_image_ids: z.array(z.number().int().positive()).optional().describe("Ordered image attachment IDs on this website. Replaces the entire gallery; omit to keep, [] to clear. To add images, read current IDs with Get_Woo_Product_Detail and send the merged list. Use normal_upload, not social_upload.")
+    };
+
     // Attribute schema: chỉ cung cấp is_variation cho Agent khi có quyền product_variation_manage
     const attributeItemSchema = z.object({
         attribute_id: z.number().optional().describe("Global attribute ID (if using an existing global attribute)"),
@@ -73,7 +78,7 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
         // Tool: Get_Woo_Product_Detail
         server.tool(
             "Get_Woo_Product_Detail",
-            `Get comprehensive details of a single WooCommerce product by its ID (including SKU, stock quantity, regular & sale prices, description, categories, and tags). Products with variations will include 'has_variations: true' and 'variations' (list of ID and name only). For full variation details, use Get_Woo_Products_with_variations.${canSeo ? " Includes RankMath 'seo' block with seo_score (read-only, computed in WP editor)." : ""}`,
+            `Get comprehensive details of a single WooCommerce product by its ID (including SKU, stock quantity, regular & sale prices, description, categories, tags, image_id, image, ordered gallery_image_ids and gallery_images). Read the current gallery before adding or reordering images. Products with variations will include 'has_variations: true' and 'variations' (list of ID and name only). For full variation details, use Get_Woo_Products_with_variations.${canSeo ? " Includes RankMath 'seo' block with seo_score (read-only, computed in WP editor)." : ""}`,
             {
                 id: z.number().describe("The WooCommerce Product ID")
             },
@@ -97,7 +102,7 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
     if (permissions.product_create) {
         server.tool(
             "Create_Woo_Product",
-            "Create a new WooCommerce product. By default saved as 'draft' for safety unless 'publish' is explicitly specified.",
+            "Create a new WooCommerce product with optional main image and gallery attachment IDs. Upload URL/base64 images first with Upload_Media using normal_upload. By default saved as 'draft' unless 'publish' is explicitly specified.",
             {
                 name: z.string().describe("The name or title of the product"),
                 regular_price: z.number().optional().describe("Standard regular selling price (for simple products, or fallback price for variations)"),
@@ -110,6 +115,7 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
                 status: z.enum(['draft', 'publish']).optional().describe("Product publication status (default: 'draft')"),
                 category_ids: z.array(z.number()).optional().describe("Array of category IDs to assign to this product"),
                 tag_ids: z.array(z.number()).optional().describe("Array of product tag IDs to assign to this product"),
+                ...imageFields,
                 attributes: z.array(attributeItemSchema).optional().describe("Array of product attributes to assign"),
                 ...(canVar ? {
                     type: z.enum(['simple', 'variable']).optional().describe("Product type: 'simple' (default) or 'variable' (for products with variations)"),
@@ -144,7 +150,7 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
     if (permissions.product_edit) {
         server.tool(
             "Update_Woo_Product",
-            "Update an existing WooCommerce product's details such as title, description, pricing, inventory stock, SKU, category assignment, tags, or attributes.",
+            "Update an existing WooCommerce product's details, main image or gallery. Omitted image fields remain unchanged. image_id=0 removes the main image; gallery_image_ids=[] clears the gallery. A supplied gallery replaces the full ordered list without deleting media files.",
             {
                 id: z.number().describe("Product ID to update"),
                 name: z.string().optional().describe("Updated product title"),
@@ -158,6 +164,7 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
                 status: z.enum(['draft', 'publish', 'private']).optional().describe("Updated status"),
                 category_ids: z.array(z.number()).optional().describe("Updated array of category IDs"),
                 tag_ids: z.array(z.number()).optional().describe("Updated array of product tag IDs"),
+                ...imageFields,
                 attributes: z.array(attributeItemSchema).optional().describe("Updated array of product attributes (replaces existing attributes if provided)"),
                 ...(canVar ? {
                     type: z.enum(['simple', 'variable']).optional().describe("Product type. Can convert from 'simple' to 'variable' (one-way only)."),
@@ -696,7 +703,7 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
         // Tool: Get_Woo_Products_with_variations
         server.tool(
             "Get_Woo_Products_with_variations",
-            "Get complete details of a variable WooCommerce product including full information of all its variations (ID, name, SKU, price, regular/sale price, stock, attributes, and status).",
+            "Get complete details of a variable WooCommerce product, including the parent product's main image and ordered gallery, and full information of all its variations (ID, name, SKU, price, regular/sale price, stock, attributes, and status).",
             {
                 id: z.number().describe("The parent variable Product ID")
             },

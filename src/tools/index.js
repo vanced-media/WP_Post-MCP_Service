@@ -11,7 +11,7 @@ import { createWpFetch } from "../utils/wpFetch.js";
 export async function createMcpServer(siteConfig) {
     const server = new McpServer({
         name: "WP-MCP Service",
-        version: "1.0.0"
+        version: "1.1.0"
     });
 
     const wpFetch = createWpFetch(siteConfig.url, siteConfig.authHeader);
