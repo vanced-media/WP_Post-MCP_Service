@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
     const canVar = !!permissions.product_variation_manage;
+    const canSeo = !!permissions.product_use_rankmath;
 
     // Attribute schema: chỉ cung cấp is_variation cho Agent khi có quyền product_variation_manage
     const attributeItemSchema = z.object({
@@ -13,6 +14,23 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
             is_variation: z.boolean().optional().describe("Whether this attribute is used for product variations (default: false)")
         } : {})
     });
+
+    const UNCHANGED = z.literal('mode_unchange');
+    const seoText = (d) => z.string().optional().describe(`${d} Send 'mode_unchange' to keep, '' to reset to RankMath default.`);
+    const seoSchema = z.object({
+        focus_keyword: seoText("Focus keywords (comma-separated, first is primary)."),
+        seo_title: seoText("SEO title tag (supports RankMath variables %title% %sep% %sitename%)."),
+        seo_description: seoText("SEO meta description (~150-160 chars)."),
+        canonical_url: seoText("Custom canonical URL."),
+        robots: z.union([UNCHANGED, z.array(z.enum(['index', 'noindex', 'follow', 'nofollow', 'noarchive', 'noimageindex', 'nosnippet']))]).optional()
+            .describe("Robots directives array. Send 'mode_unchange' to keep, [] to reset to default."),
+        pillar_content: z.union([UNCHANGED, z.boolean()]).optional()
+            .describe("Mark product as pillar content. Send 'mode_unchange' to keep."),
+        facebook_title: seoText("Facebook Open Graph title."),
+        facebook_description: seoText("Facebook Open Graph description."),
+        facebook_image_id: z.union([UNCHANGED, z.number()]).optional()
+            .describe("Media attachment ID for Facebook OG image. Send 'mode_unchange' to keep, 0 to reset.")
+    }).describe("RankMath SEO configuration. Send 'mode_unchange' for any fields you want to leave intact.");
 
     // -------------------------------------------------------------
     // 1. PRODUCT MANAGEMENT TOOLS
@@ -55,7 +73,7 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
         // Tool: Get_Woo_Product_Detail
         server.tool(
             "Get_Woo_Product_Detail",
-            "Get comprehensive details of a single WooCommerce product by its ID (including SKU, stock quantity, regular & sale prices, description, categories, and tags). Products with variations will include 'has_variations: true' and 'variations' (list of ID and name only). For full variation details, use Get_Woo_Products_with_variations.",
+            `Get comprehensive details of a single WooCommerce product by its ID (including SKU, stock quantity, regular & sale prices, description, categories, and tags). Products with variations will include 'has_variations: true' and 'variations' (list of ID and name only). For full variation details, use Get_Woo_Products_with_variations.${canSeo ? " Includes RankMath 'seo' block with seo_score (read-only, computed in WP editor)." : ""}`,
             {
                 id: z.number().describe("The WooCommerce Product ID")
             },
@@ -98,6 +116,9 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
                     auto_generate_variations: z.boolean().optional().describe("If true and type is variable, automatically generate all variation combinations from attributes with is_variation=true (max 24). You MUST review generated variations afterwards."),
                     default_regular_price: z.number().optional().describe("Price to apply to all automatically generated variations. If omitted, inherits parent's regular price."),
                     variation_status: z.enum(['publish', 'private']).optional().describe("Publication status for generated variations (default: 'publish'). If variations have no price, they are automatically set to 'private'.")
+                } : {}),
+                ...(canSeo ? {
+                    seo: seoSchema.optional()
                 } : {})
             },
             async (args) => {
@@ -143,6 +164,9 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
                     auto_generate_variations: z.boolean().optional().describe("If true, automatically generate all missing variation combinations (max 24 total). You MUST review results via Get_Woo_Products_with_variations afterwards."),
                     default_regular_price: z.number().optional().describe("Price for generated variations. If omitted, inherits parent's regular price."),
                     variation_status: z.enum(['publish', 'private']).optional().describe("Status for generated variations (default: 'publish').")
+                } : {}),
+                ...(canSeo ? {
+                    seo: seoSchema.optional()
                 } : {})
             },
             async ({ id, ...body }) => {
