@@ -1,6 +1,19 @@
 import { z } from "zod";
 
 export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
+    const canVar = !!permissions.product_variation_manage;
+
+    // Attribute schema: chỉ cung cấp is_variation cho Agent khi có quyền product_variation_manage
+    const attributeItemSchema = z.object({
+        attribute_id: z.number().optional().describe("Global attribute ID (if using an existing global attribute)"),
+        name: z.string().describe("Attribute name or taxonomy (e.g. 'Color', 'Size', or 'pa_color')"),
+        options: z.array(z.string()).describe("Array of attribute term values or text options (e.g. ['Red', 'Blue'])"),
+        visible: z.boolean().optional().describe("Whether this attribute is visible on the product page (default: true)"),
+        ...(canVar ? {
+            is_variation: z.boolean().optional().describe("Whether this attribute is used for product variations (default: false)")
+        } : {})
+    });
+
     // -------------------------------------------------------------
     // 1. PRODUCT MANAGEMENT TOOLS
     // -------------------------------------------------------------
@@ -9,7 +22,7 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
     if (permissions.product_read) {
         server.tool(
             "Get_Woo_Products",
-            "Search and list WooCommerce products with support for keyword search, category filtering, status filtering, and pagination.",
+            "Search and list WooCommerce products with support for keyword search, category filtering, status filtering, and pagination. Products with variations will include 'has_variations: true' and 'variations' (list of ID and name only).",
             {
                 search: z.string().optional().describe("Keyword to search in product title or description"),
                 category_id: z.number().optional().describe("Filter by WooCommerce product category ID"),
@@ -42,7 +55,7 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
         // Tool: Get_Woo_Product_Detail
         server.tool(
             "Get_Woo_Product_Detail",
-            "Get comprehensive details of a single WooCommerce product by its ID (including SKU, stock quantity, regular & sale prices, description, categories, and tags).",
+            "Get comprehensive details of a single WooCommerce product by its ID (including SKU, stock quantity, regular & sale prices, description, categories, and tags). Products with variations will include 'has_variations: true' and 'variations' (list of ID and name only). For full variation details, use Get_Woo_Products_with_variations.",
             {
                 id: z.number().describe("The WooCommerce Product ID")
             },
@@ -69,7 +82,7 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
             "Create a new WooCommerce product. By default saved as 'draft' for safety unless 'publish' is explicitly specified.",
             {
                 name: z.string().describe("The name or title of the product"),
-                regular_price: z.number().optional().describe("Standard regular selling price"),
+                regular_price: z.number().optional().describe("Standard regular selling price (for simple products, or fallback price for variations)"),
                 sale_price: z.number().optional().describe("Discounted/Sale price"),
                 description: z.string().optional().describe("Full HTML or text description of the product"),
                 short_description: z.string().optional().describe("Short excerpt summary of the product"),
@@ -77,7 +90,15 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
                 stock_status: z.enum(['instock', 'outofstock', 'onbackorder']).optional().describe("Stock status"),
                 stock_quantity: z.number().optional().describe("Initial stock quantity count"),
                 status: z.enum(['draft', 'publish']).optional().describe("Product publication status (default: 'draft')"),
-                category_ids: z.array(z.number()).optional().describe("Array of category IDs to assign to this product")
+                category_ids: z.array(z.number()).optional().describe("Array of category IDs to assign to this product"),
+                tag_ids: z.array(z.number()).optional().describe("Array of product tag IDs to assign to this product"),
+                attributes: z.array(attributeItemSchema).optional().describe("Array of product attributes to assign"),
+                ...(canVar ? {
+                    type: z.enum(['simple', 'variable']).optional().describe("Product type: 'simple' (default) or 'variable' (for products with variations)"),
+                    auto_generate_variations: z.boolean().optional().describe("If true and type is variable, automatically generate all variation combinations from attributes with is_variation=true (max 24). You MUST review generated variations afterwards."),
+                    default_regular_price: z.number().optional().describe("Price to apply to all automatically generated variations. If omitted, inherits parent's regular price."),
+                    variation_status: z.enum(['publish', 'private']).optional().describe("Publication status for generated variations (default: 'publish'). If variations have no price, they are automatically set to 'private'.")
+                } : {})
             },
             async (args) => {
                 try {
@@ -102,7 +123,7 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
     if (permissions.product_edit) {
         server.tool(
             "Update_Woo_Product",
-            "Update an existing WooCommerce product's details such as title, description, pricing, inventory stock, SKU, or category assignment.",
+            "Update an existing WooCommerce product's details such as title, description, pricing, inventory stock, SKU, category assignment, tags, or attributes.",
             {
                 id: z.number().describe("Product ID to update"),
                 name: z.string().optional().describe("Updated product title"),
@@ -114,7 +135,15 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
                 stock_quantity: z.number().optional().describe("Updated stock quantity"),
                 sku: z.string().optional().describe("Updated SKU"),
                 status: z.enum(['draft', 'publish', 'private']).optional().describe("Updated status"),
-                category_ids: z.array(z.number()).optional().describe("Updated array of category IDs")
+                category_ids: z.array(z.number()).optional().describe("Updated array of category IDs"),
+                tag_ids: z.array(z.number()).optional().describe("Updated array of product tag IDs"),
+                attributes: z.array(attributeItemSchema).optional().describe("Updated array of product attributes (replaces existing attributes if provided)"),
+                ...(canVar ? {
+                    type: z.enum(['simple', 'variable']).optional().describe("Product type. Can convert from 'simple' to 'variable' (one-way only)."),
+                    auto_generate_variations: z.boolean().optional().describe("If true, automatically generate all missing variation combinations (max 24 total). You MUST review results via Get_Woo_Products_with_variations afterwards."),
+                    default_regular_price: z.number().optional().describe("Price for generated variations. If omitted, inherits parent's regular price."),
+                    variation_status: z.enum(['publish', 'private']).optional().describe("Status for generated variations (default: 'publish').")
+                } : {})
             },
             async ({ id, ...body }) => {
                 try {
@@ -316,4 +345,470 @@ export function registerWooCommerceTools(server, wpFetch, permissions = {}) {
             }
         );
     }
+
+    // -------------------------------------------------------------
+    // 4. CATALOG STRUCTURE TOOLS (Categories, Tags & Attributes)
+    // -------------------------------------------------------------
+
+    // Read Catalog: Get_Woo_Categories, Get_Woo_Tags, Get_Woo_Attributes, Get_Woo_Attribute_Terms
+    if (permissions.catalog_read) {
+        // Tool: Get_Woo_Categories
+        server.tool(
+            "Get_Woo_Categories",
+            "List WooCommerce product categories with support for search, parent category filtering, hide empty, and pagination.",
+            {
+                search: z.string().optional().describe("Search term for category name"),
+                parent: z.number().optional().describe("Filter by direct parent category ID (0 for top-level only)"),
+                hide_empty: z.boolean().optional().describe("Whether to hide categories that have no products (default: false)"),
+                limit: z.number().optional().describe("Max number of categories to return (default: 50)"),
+                page: z.number().optional().describe("Page number for pagination (default: 1)")
+            },
+            async ({ search, parent, hide_empty = false, limit = 50, page = 1 }) => {
+                try {
+                    let url = `/wp-json/assist-agent/v1/product-categories?limit=${limit}&page=${page}&hide_empty=${hide_empty ? 1 : 0}`;
+                    if (search) {
+                        url += `&search=${encodeURIComponent(search)}`;
+                    }
+                    if (parent !== undefined) {
+                        url += `&parent=${parent}`;
+                    }
+                    const data = await wpFetch(url);
+                    return {
+                        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+                    };
+                } catch (error) {
+                    return {
+                        isError: true,
+                        content: [{ type: "text", text: `Error fetching product categories: ${error.message}` }]
+                    };
+                }
+            }
+        );
+
+        // Tool: Get_Woo_Tags
+        server.tool(
+            "Get_Woo_Tags",
+            "List WooCommerce product tags with search and pagination.",
+            {
+                search: z.string().optional().describe("Search term for tag name"),
+                hide_empty: z.boolean().optional().describe("Whether to hide tags with no products (default: false)"),
+                limit: z.number().optional().describe("Max number of tags to return (default: 50)"),
+                page: z.number().optional().describe("Page number for pagination (default: 1)")
+            },
+            async ({ search, hide_empty = false, limit = 50, page = 1 }) => {
+                try {
+                    let url = `/wp-json/assist-agent/v1/product-tags?limit=${limit}&page=${page}&hide_empty=${hide_empty ? 1 : 0}`;
+                    if (search) {
+                        url += `&search=${encodeURIComponent(search)}`;
+                    }
+                    const data = await wpFetch(url);
+                    return {
+                        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+                    };
+                } catch (error) {
+                    return {
+                        isError: true,
+                        content: [{ type: "text", text: `Error fetching product tags: ${error.message}` }]
+                    };
+                }
+            }
+        );
+
+        // Tool: Get_Woo_Attributes
+        server.tool(
+            "Get_Woo_Attributes",
+            "List all WooCommerce global attributes (taxonomies starting with pa_*) and optionally their defined terms.",
+            {
+                with_terms: z.boolean().optional().describe("Whether to include terms for each attribute (default: true)")
+            },
+            async ({ with_terms = true }) => {
+                try {
+                    const data = await wpFetch(`/wp-json/assist-agent/v1/product-attributes?with_terms=${with_terms ? 1 : 0}`);
+                    return {
+                        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+                    };
+                } catch (error) {
+                    return {
+                        isError: true,
+                        content: [{ type: "text", text: `Error fetching product attributes: ${error.message}` }]
+                    };
+                }
+            }
+        );
+
+        // Tool: Get_Woo_Attribute_Terms
+        server.tool(
+            "Get_Woo_Attribute_Terms",
+            "List all term values of a specific global WooCommerce attribute by attribute ID.",
+            {
+                attribute_id: z.number().describe("The ID of the global attribute")
+            },
+            async ({ attribute_id }) => {
+                try {
+                    const data = await wpFetch(`/wp-json/assist-agent/v1/product-attributes/${attribute_id}/terms`);
+                    return {
+                        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+                    };
+                } catch (error) {
+                    return {
+                        isError: true,
+                        content: [{ type: "text", text: `Error fetching attribute terms for attribute #${attribute_id}: ${error.message}` }]
+                    };
+                }
+            }
+        );
+    }
+
+    // Manage Categories & Tags: Create_Woo_Term, Update_Woo_Term
+    if (permissions.catalog_terms_manage) {
+        // Tool: Create_Woo_Term
+        server.tool(
+            "Create_Woo_Term",
+            "Create a new WooCommerce product category or product tag.",
+            {
+                taxonomy: z.enum(['category', 'tag']).describe("Term type: 'category' for product category or 'tag' for product tag"),
+                name: z.string().describe("Name of the category or tag"),
+                slug: z.string().optional().describe("URL slug for the term"),
+                description: z.string().optional().describe("Description for the term"),
+                parent: z.number().optional().describe("Parent category ID (applicable to categories only)")
+            },
+            async ({ taxonomy, ...body }) => {
+                try {
+                    const path = taxonomy === 'category'
+                        ? '/wp-json/assist-agent/v1/product-categories'
+                        : '/wp-json/assist-agent/v1/product-tags';
+                    const data = await wpFetch(path, {
+                        method: 'POST',
+                        body: JSON.stringify(body)
+                    });
+                    return {
+                        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+                    };
+                } catch (error) {
+                    return {
+                        isError: true,
+                        content: [{ type: "text", text: `Error creating ${taxonomy}: ${error.message}` }]
+                    };
+                }
+            }
+        );
+
+        // Tool: Update_Woo_Term
+        server.tool(
+            "Update_Woo_Term",
+            "Update an existing WooCommerce product category or product tag.",
+            {
+                taxonomy: z.enum(['category', 'tag']).describe("Term type: 'category' or 'tag'"),
+                id: z.number().describe("ID of the category or tag to update"),
+                name: z.string().optional().describe("Updated name"),
+                slug: z.string().optional().describe("Updated slug"),
+                description: z.string().optional().describe("Updated description"),
+                parent: z.number().optional().describe("Updated parent category ID (categories only)")
+            },
+            async ({ taxonomy, id, ...body }) => {
+                try {
+                    const path = taxonomy === 'category'
+                        ? `/wp-json/assist-agent/v1/product-categories/${id}`
+                        : `/wp-json/assist-agent/v1/product-tags/${id}`;
+                    const data = await wpFetch(path, {
+                        method: 'POST',
+                        body: JSON.stringify(body)
+                    });
+                    return {
+                        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+                    };
+                } catch (error) {
+                    return {
+                        isError: true,
+                        content: [{ type: "text", text: `Error updating ${taxonomy} #${id}: ${error.message}` }]
+                    };
+                }
+            }
+        );
+    }
+
+    // Manage Attributes & Terms: Create_Woo_Attribute, Update_Woo_Attribute, Upsert_Woo_Attribute_Term
+    if (permissions.catalog_attributes_manage) {
+        // Tool: Create_Woo_Attribute
+        server.tool(
+            "Create_Woo_Attribute",
+            "Create a new WooCommerce global product attribute (e.g. Color, Size, Brand).",
+            {
+                name: z.string().describe("Human-readable attribute name (e.g. 'Màu sắc', 'Kích cỡ')"),
+                slug: z.string().optional().describe("Attribute slug without pa_ prefix (max 25 characters, e.g. 'mau-sac')"),
+                type: z.enum(['select']).optional().describe("Attribute type (default: 'select')"),
+                order_by: z.enum(['menu_order', 'name', 'name_num', 'id']).optional().describe("Sorting order (default: 'menu_order')"),
+                has_archives: z.boolean().optional().describe("Enable archive page for this attribute (default: false)")
+            },
+            async (args) => {
+                try {
+                    const data = await wpFetch(`/wp-json/assist-agent/v1/product-attributes`, {
+                        method: 'POST',
+                        body: JSON.stringify(args)
+                    });
+                    return {
+                        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+                    };
+                } catch (error) {
+                    return {
+                        isError: true,
+                        content: [{ type: "text", text: `Error creating attribute: ${error.message}` }]
+                    };
+                }
+            }
+        );
+
+        // Tool: Update_Woo_Attribute
+        server.tool(
+            "Update_Woo_Attribute",
+            "Update an existing global WooCommerce product attribute's name, slug, or settings.",
+            {
+                id: z.number().describe("The attribute ID to update"),
+                name: z.string().optional().describe("Updated attribute name"),
+                slug: z.string().optional().describe("Updated slug without pa_ prefix"),
+                order_by: z.enum(['menu_order', 'name', 'name_num', 'id']).optional().describe("Updated sorting order"),
+                has_archives: z.boolean().optional().describe("Updated archive page setting")
+            },
+            async ({ id, ...body }) => {
+                try {
+                    const data = await wpFetch(`/wp-json/assist-agent/v1/product-attributes/${id}`, {
+                        method: 'POST',
+                        body: JSON.stringify(body)
+                    });
+                    return {
+                        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+                    };
+                } catch (error) {
+                    return {
+                        isError: true,
+                        content: [{ type: "text", text: `Error updating attribute #${id}: ${error.message}` }]
+                    };
+                }
+            }
+        );
+
+        // Tool: Upsert_Woo_Attribute_Term
+        server.tool(
+            "Upsert_Woo_Attribute_Term",
+            "Add a term value to a global WooCommerce product attribute (e.g. add 'Đỏ' or 'Xanh' to attribute 'Color').",
+            {
+                attribute_id: z.number().describe("The ID of the global attribute"),
+                name: z.string().describe("Term value name (e.g. 'Red', 'Blue', 'XL')"),
+                slug: z.string().optional().describe("Optional URL slug for the term"),
+                description: z.string().optional().describe("Optional description for the term")
+            },
+            async ({ attribute_id, ...body }) => {
+                try {
+                    const data = await wpFetch(`/wp-json/assist-agent/v1/product-attributes/${attribute_id}/terms`, {
+                        method: 'POST',
+                        body: JSON.stringify(body)
+                    });
+                    return {
+                        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+                    };
+                } catch (error) {
+                    return {
+                        isError: true,
+                        content: [{ type: "text", text: `Error adding term to attribute #${attribute_id}: ${error.message}` }]
+                    };
+                }
+            }
+        );
+    }
+
+    // Delete Catalog Items: Delete_Woo_Catalog_Item
+    if (permissions.catalog_delete) {
+        server.tool(
+            "Delete_Woo_Catalog_Item",
+            "Permanently delete a product category, tag, global attribute, or attribute term from WooCommerce. Warning: Deleting a category or attribute cannot be undone.",
+            {
+                type: z.enum(['category', 'tag', 'attribute', 'attribute_term']).describe("Type of item to delete: 'category', 'tag', 'attribute', or 'attribute_term'"),
+                id: z.number().describe("ID of the category, tag, or attribute to delete. For 'attribute_term', this is the term ID."),
+                attribute_id: z.number().optional().describe("Required ONLY when type is 'attribute_term' to identify the parent attribute ID")
+            },
+            async ({ type, id, attribute_id }) => {
+                try {
+                    let path = '';
+                    switch (type) {
+                        case 'category':
+                            path = `/wp-json/assist-agent/v1/product-categories/${id}`;
+                            break;
+                        case 'tag':
+                            path = `/wp-json/assist-agent/v1/product-tags/${id}`;
+                            break;
+                        case 'attribute':
+                            path = `/wp-json/assist-agent/v1/product-attributes/${id}`;
+                            break;
+                        case 'attribute_term':
+                            if (!attribute_id) {
+                                return {
+                                    isError: true,
+                                    content: [{ type: "text", text: "attribute_id is required when deleting an attribute_term" }]
+                                };
+                            }
+                            path = `/wp-json/assist-agent/v1/product-attributes/${attribute_id}/terms/${id}`;
+                            break;
+                    }
+
+                    const data = await wpFetch(path, { method: 'DELETE' });
+                    return {
+                        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+                    };
+                } catch (error) {
+                    return {
+                        isError: true,
+                        content: [{ type: "text", text: `Error deleting catalog ${type} #${id}: ${error.message}` }]
+                    };
+                }
+            }
+        );
+    }
+
+    // -------------------------------------------------------------
+    // 5. PRODUCT VARIATIONS MANAGEMENT TOOLS
+    // -------------------------------------------------------------
+
+    if (canVar) {
+        // Tool: Get_Woo_Products_with_variations
+        server.tool(
+            "Get_Woo_Products_with_variations",
+            "Get complete details of a variable WooCommerce product including full information of all its variations (ID, name, SKU, price, regular/sale price, stock, attributes, and status).",
+            {
+                id: z.number().describe("The parent variable Product ID")
+            },
+            async ({ id }) => {
+                try {
+                    const data = await wpFetch(`/wp-json/assist-agent/v1/products/${id}/full`);
+                    return {
+                        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+                    };
+                } catch (error) {
+                    return {
+                        isError: true,
+                        content: [{ type: "text", text: `Error fetching product with variations #${id}: ${error.message}` }]
+                    };
+                }
+            }
+        );
+
+        // Tool: Create_Woo_Variation
+        server.tool(
+            "Create_Woo_Variation",
+            "Create a single new variation for a variable product. A product can have a maximum of 24 variations.",
+            {
+                product_id: z.number().describe("Parent variable product ID"),
+                attributes: z.record(z.string()).describe("Key-value map of attributes for this variation, where key is attribute taxonomy/slug (e.g. 'pa_color' or 'size') and value is term slug/value (e.g. {'pa_color': 'red', 'pa_size': 'xl'})"),
+                regular_price: z.number().optional().describe("Regular selling price for this variation"),
+                sale_price: z.number().optional().describe("Sale price for this variation"),
+                sku: z.string().optional().describe("SKU for this variation"),
+                stock_status: z.enum(['instock', 'outofstock', 'onbackorder']).optional().describe("Stock status (default: 'instock')"),
+                stock_quantity: z.number().optional().describe("Stock quantity count"),
+                status: z.enum(['publish', 'private']).optional().describe("Publication status (default: 'publish'). If no regular_price is set, variation is automatically saved as 'private'."),
+                description: z.string().optional().describe("Description specific to this variation")
+            },
+            async ({ product_id, ...body }) => {
+                try {
+                    const data = await wpFetch(`/wp-json/assist-agent/v1/products/${product_id}/variations`, {
+                        method: 'POST',
+                        body: JSON.stringify(body)
+                    });
+                    return {
+                        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+                    };
+                } catch (error) {
+                    return {
+                        isError: true,
+                        content: [{ type: "text", text: `Error creating variation for product #${product_id}: ${error.message}` }]
+                    };
+                }
+            }
+        );
+
+        // Tool: Update_Woo_Variation
+        server.tool(
+            "Update_Woo_Variation",
+            "Update an existing variation's price, stock, SKU, status, or attributes.",
+            {
+                product_id: z.number().describe("Parent variable product ID"),
+                variation_id: z.number().describe("Variation ID to update"),
+                attributes: z.record(z.string()).optional().describe("Updated attribute combination map"),
+                regular_price: z.number().optional().describe("Updated regular price"),
+                sale_price: z.number().optional().describe("Updated sale price"),
+                sku: z.string().optional().describe("Updated SKU"),
+                stock_status: z.enum(['instock', 'outofstock', 'onbackorder']).optional().describe("Updated stock status"),
+                stock_quantity: z.number().optional().describe("Updated stock quantity"),
+                status: z.enum(['publish', 'private']).optional().describe("Updated status"),
+                description: z.string().optional().describe("Updated description")
+            },
+            async ({ product_id, variation_id, ...body }) => {
+                try {
+                    const data = await wpFetch(`/wp-json/assist-agent/v1/products/${product_id}/variations/${variation_id}`, {
+                        method: 'POST',
+                        body: JSON.stringify(body)
+                    });
+                    return {
+                        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+                    };
+                } catch (error) {
+                    return {
+                        isError: true,
+                        content: [{ type: "text", text: `Error updating variation #${variation_id}: ${error.message}` }]
+                    };
+                }
+            }
+        );
+
+        // Tool: Delete_Woo_Variation
+        server.tool(
+            "Delete_Woo_Variation",
+            "Permanently delete a single product variation from a variable product. Warning: cannot be undone.",
+            {
+                product_id: z.number().describe("Parent variable product ID"),
+                variation_id: z.number().describe("Variation ID to delete")
+            },
+            async ({ product_id, variation_id }) => {
+                try {
+                    const data = await wpFetch(`/wp-json/assist-agent/v1/products/${product_id}/variations/${variation_id}`, {
+                        method: 'DELETE'
+                    });
+                    return {
+                        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+                    };
+                } catch (error) {
+                    return {
+                        isError: true,
+                        content: [{ type: "text", text: `Error deleting variation #${variation_id}: ${error.message}` }]
+                    };
+                }
+            }
+        );
+
+        // Tool: Generate_Woo_Variations
+        server.tool(
+            "Generate_Woo_Variations",
+            "Automatically generate all possible variations from the parent product's attributes that have is_variation=true. Maximum 24 variations total. You MUST inspect and review the generated variations via Get_Woo_Products_with_variations to adjust prices or delete unnecessary variations.",
+            {
+                product_id: z.number().describe("Parent variable product ID"),
+                default_regular_price: z.number().optional().describe("Price to assign to all generated variations. If omitted, inherits parent's regular price."),
+                variation_status: z.enum(['publish', 'private']).optional().describe("Publication status for generated variations (default: 'publish'). If no price is available, set to 'private'.")
+            },
+            async ({ product_id, ...body }) => {
+                try {
+                    const data = await wpFetch(`/wp-json/assist-agent/v1/products/${product_id}/variations/generate`, {
+                        method: 'POST',
+                        body: JSON.stringify(body)
+                    });
+                    return {
+                        content: [{ type: "text", text: JSON.stringify(data, null, 2) }]
+                    };
+                } catch (error) {
+                    return {
+                        isError: true,
+                        content: [{ type: "text", text: `Error generating variations for product #${product_id}: ${error.message}` }]
+                    };
+                }
+            }
+        );
+    }
 }
+
