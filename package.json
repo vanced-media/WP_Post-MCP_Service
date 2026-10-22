@@ -2,7 +2,7 @@
   "name": "WP-MCP_Service",
   "version": "1.1.0",
   "description": "",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "test": "node --test tests/*.test.js"
@@ -17,6 +17,11 @@
       "onFail": "download"
     }
   },
+  "engines": {
+    "node": "24.22.1",
+    "pnpm": "11.10.0"
+  },
+  "packageManager": "pnpm@11.10.0",
   "type": "module",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
